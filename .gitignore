@@ -1,0 +1,10 @@
+__pycache__
+__cache__
+cache
+models
+venv
+cache
+*.mkv
+*.jpeg
+*.mp4
+.vscode
