@@ -5,13 +5,13 @@ import numpy as np
 import time
 import subprocess as sp
 import torch
-import math
 
 
 class GameStream:
-    def __init__(self, queue):
+    def __init__(self, queue, preview):
         self.queue = queue
         self.thread = Thread(target=self.fetch_stream)
+        self.preview = preview
 
     def get_thread(self):
         return self.thread
@@ -30,8 +30,8 @@ class GameStream:
         width = 640
         height = int(width * 9/16)
 
-        command = "ffmpeg -y -video_size 1920x1080 -framerate 2 -f x11grab -i :0.0 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % width
-        #command = "ffmpeg -y -i output1.mkv -pix_fmt bgr24 -vf fps=15,scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % width
+        # command = "ffmpeg -y -video_size 1920x1080 -framerate 2 -f x11grab -i :0.0 -pix_fmt bgr24 -vf fps=2,scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % width
+        command = "ffmpeg -y -i output1.mkv -pix_fmt bgr24 -vf fps=2,scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % width
         pipe = sp.Popen(command.split(" "), stdout=sp.PIPE,
                         stderr=sp.PIPE, bufsize=-1)
 
@@ -59,15 +59,15 @@ class GameStream:
         else:
             transform = midas_transforms.small_transform
 
-        cv2.namedWindow("depth_map")
-        cv2.resizeWindow("depth_map", width, height)
+        if self.preview:
+            cv2.namedWindow("depth_map")
+            cv2.resizeWindow("depth_map", width, height)
 
-        cv2.namedWindow("game_stream")
-        cv2.resizeWindow("game_stream", width, height)
-
-        writer = cv2.VideoWriter('depth_map.mp4',
-                                 cv2.VideoWriter_fourcc(*'mp4v'),
-                                 15, (width, height))
+            cv2.namedWindow("game_stream")
+            cv2.resizeWindow("game_stream", width, height)
+            writer = cv2.VideoWriter('depth_map.mp4',
+                                     cv2.VideoWriter_fourcc(*'mp4v'),
+                                     15, (width, height))
 
         x = int((width * 0.5))
         y = int((height * 0.5))
@@ -119,11 +119,11 @@ class GameStream:
         color = (0,  0, 0)
         thickness = 5
         while True:
+            start = time.time()
+
             img = np.frombuffer(
                 buffer=pipe.stdout.read(width*height*3), dtype='uint8')
             img = img.reshape((height, width, 3))
-
-            start = time.time()
 
             # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
@@ -145,7 +145,6 @@ class GameStream:
 
             depth_map = cv2.normalize(depth_map, None, 0, 255,
                                       norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-            depth_map = cv2.cvtColor(depth_map, cv2.COLOR_GRAY2RGB)
 
             # avg = 0
             # for p in points:
@@ -154,32 +153,37 @@ class GameStream:
             #     avg = (
             #         avg + self.get_region(p[0], p[1], depth_map))/2
 
-            cv2.rectangle(depth_map, points[0][0],
-                          points[0][1], color, thickness)
-            cv2.rectangle(img, points[0][0], points[0][1],  color, thickness)
-
-            val = round(self.get_region(
+            val = int(self.get_region(
                 points[0][0], points[0][1], depth_map))
             self.queue.put(val)
 
-            cv2.circle(img, (x, y), 0, color, thickness)
-            cv2.circle(depth_map, (x, y), 0, color, thickness)
+            if self.preview:
+                depth_map = cv2.cvtColor(depth_map, cv2.COLOR_GRAY2RGB)
+                cv2.rectangle(depth_map, points[0][0],
+                              points[0][1], color, thickness)
+                cv2.rectangle(img, points[0][0],
+                              points[0][1],  color, thickness)
 
-            end = time.time()
-            totalTime = end - start
-            fps = 1 / totalTime
+                cv2.circle(img, (x, y), 0, color, thickness)
+                cv2.circle(depth_map, (x, y), 0, color, thickness)
 
-            cv2.putText(depth_map, f'FPS: {int(fps)}', (20, 70),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 2)
+                end = time.time()
+                totalTime = end - start
+                fps = 1 / totalTime
 
-            cv2.imshow("game_stream", img)
-            cv2.imshow("depth_map", depth_map)
+                cv2.putText(depth_map, f'FPS: {int(fps)}', (20, 70),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 2)
+                cv2.putText(depth_map, f'VAL: {int(val)}', (20, 140),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 2)
 
-            # writer.write(depth_map)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                # pipe.kill()
-                break
+                cv2.imshow("game_stream", img)
+                cv2.imshow("depth_map", depth_map)
+                writer.write(depth_map)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    pipe.kill()
+                    break
 
             pipe.stdout.flush()
 
-        cv2.destroyAllWindows()
+        if self.preview:
+            cv2.destroyAllWindows()

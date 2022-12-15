@@ -8,3 +8,4 @@ cache
 *.jpeg
 *.mp4
 .vscode
+monodepth2
