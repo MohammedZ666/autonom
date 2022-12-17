@@ -27,7 +27,7 @@ class GameController():
         return self.listener
 
     def handle_press(self, key):
-        if key == Key.ctrl_l:
+        if key == Key.end:
             self.should_play = not self.should_play
             if self.should_play:
                 # command = "ffmpeg -video_size 1920x1080 -framerate 15 -f x11grab -i :0.0 -c:v libx264rgb -crf 0 -preset ultrafast -color_range 2 output.mkv"
@@ -76,13 +76,13 @@ class GameController():
             if dis < 80:
                 print('accelrating', dis)
                 self.state = GAS
-                if not self.for_thread.is_alive() and self.should_play:
-                    self.for_thread = Thread(target=self.forward)
-                    self.for_thread.start()
+                # if not self.for_thread.is_alive() and self.should_play:
+                #     self.for_thread = Thread(target=self.forward)
+                #     self.for_thread.start()
 
             else:
                 print('breaking', dis)
                 self.state = BREAK
-                if not self.stop_thread.is_alive() and self.should_play:
-                    self.stop_thread = Thread(target=self.stop)
-                    self.stop_thread.start()
+                # if not self.stop_thread.is_alive() and self.should_play:
+                #     self.stop_thread = Thread(target=self.stop)
+                #     self.stop_thread.start()

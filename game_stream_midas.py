@@ -5,13 +5,17 @@ import numpy as np
 import time
 import subprocess as sp
 import torch
+import os
 
 
-class GameStream:
+class GameStreamMidas:
     def __init__(self, queue, preview):
         self.queue = queue
         self.thread = Thread(target=self.fetch_stream)
         self.preview = preview
+        self.transform = None
+        self.device = None
+        self.midas = None
 
     def get_thread(self):
         return self.thread
@@ -26,48 +30,86 @@ class GameStream:
         return (int(avg_list.mean()))
         # print(np.diff(avg_list))
 
-    def fetch_stream(self):
-        width = 640
-        height = int(width * 9/16)
-
-        # command = "ffmpeg -y -video_size 1920x1080 -framerate 2 -f x11grab -i :0.0 -pix_fmt bgr24 -vf fps=2,scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % width
-        command = "ffmpeg -y -i output1.mkv -pix_fmt bgr24 -vf fps=2,scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % width
-        pipe = sp.Popen(command.split(" "), stdout=sp.PIPE,
-                        stderr=sp.PIPE, bufsize=-1)
-
+    def initialize(self, model_type):
         # Load a MiDas model for depth estimation
         # MiDaS v3 - Large     (highest accuracy, slowest inference speed)
-        # model_type = "DPT_Large"
-        # model_type = "DPT_Hybrid"   # MiDaS v3 - Hybrid    (medium accuracy, medium inference speed)
+        if model_type == 0:
+            model_type = "DPT_Large"
+        if model_type == 1:
+            # MiDaS v3 - Hybrid    (medium accuracy, medium inference speed)
+            model_type = "DPT_Hybrid"
         # MiDaS v2.1 - Small   (lowest accuracy, highest inference speed)
-        model_type = "MiDaS_small"
+        else:
+            model_type = "MiDaS_small"
 
-        midas = torch.hub.load("intel-isl/MiDaS", model_type)
+        self.midas = torch.hub.load("intel-isl/MiDaS", model_type)
 
         # Move model to GPU if available
         # device = torch.device(
         #     "cuda") if torch.cuda.is_available() else torch.device("cpu")
-        device = torch.device("cpu")
-        midas.to(device)
-        midas.eval()
+        self.device = torch.device("cpu")
+        self.midas.to(self.device)
+        self.midas.eval()
 
         # Load transforms to resize and normalize the img
         midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms")
 
         if model_type == "DPT_Large" or model_type == "DPT_Hybrid":
-            transform = midas_transforms.dpt_transform
+            self.transform = midas_transforms.dpt_transform
         else:
-            transform = midas_transforms.small_transform
+            self.transform = midas_transforms.small_transform
 
+        pass
+
+    def infer(self, img):
+        # Apply input transforms
+        input_batch = self.transform(img).to(self.device)
+
+        # Prediction and resize to original resolution
+        with torch.no_grad():
+            prediction = self.midas(input_batch)
+
+            prediction = torch.nn.functional.interpolate(
+                prediction.unsqueeze(1),
+                size=img.shape[:2],
+                mode="bicubic",
+                align_corners=False,
+            ).squeeze()
+
+        depth_map = prediction.cpu().numpy()
+
+        depth_map = cv2.normalize(depth_map, None, 0, 255,
+                                  norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+        return depth_map
+
+    def fetch_stream(self):
+        width = 640
+        height = int(width * 9/16)
+        stream_fps = 2
+        command = "ffmpeg -y -video_size 1920x1080 -framerate %s -f x11grab -i :0.0 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % (
+            stream_fps, width)
+        # command = "ffmpeg -y -i video.mp4 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % width
+        pipe = sp.Popen(command.split(" "), stdout=sp.PIPE,
+                        stderr=sp.PIPE, bufsize=-1)
+        self.initialize(2)
         if self.preview:
-            cv2.namedWindow("depth_map")
-            cv2.resizeWindow("depth_map", width, height)
+            try:
+                os.remove('depth_map.mp4')
+                os.remove('video.mp4')
+            except:
+                pass
 
-            cv2.namedWindow("game_stream")
-            cv2.resizeWindow("game_stream", width, height)
-            writer = cv2.VideoWriter('depth_map.mp4',
-                                     cv2.VideoWriter_fourcc(*'mp4v'),
-                                     15, (width, height))
+            # cv2.namedWindow("depth_map")
+            # cv2.resizeWindow("depth_map", width, height)
+
+            # cv2.namedWindow("game_stream")
+            # cv2.resizeWindow("game_stream", width, height)
+            writer_depth = cv2.VideoWriter('depth_map.mp4',
+                                           cv2.VideoWriter_fourcc(*'mp4v'),
+                                           stream_fps, (width, height))
+            writer_image = cv2.VideoWriter('video.mp4',
+                                           cv2.VideoWriter_fourcc(*'mp4v'),
+                                           stream_fps, (width, height))
 
         x = int((width * 0.5))
         y = int((height * 0.5))
@@ -127,25 +169,6 @@ class GameStream:
 
             # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-            # Apply input transforms
-            input_batch = transform(img).to(device)
-
-            # Prediction and resize to original resolution
-            with torch.no_grad():
-                prediction = midas(input_batch)
-
-                prediction = torch.nn.functional.interpolate(
-                    prediction.unsqueeze(1),
-                    size=img.shape[:2],
-                    mode="bicubic",
-                    align_corners=False,
-                ).squeeze()
-
-            depth_map = prediction.cpu().numpy()
-
-            depth_map = cv2.normalize(depth_map, None, 0, 255,
-                                      norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-
             # avg = 0
             # for p in points:
             #     cv2.rectangle(depth_map, p[0], p[1], color, thickness)
@@ -153,12 +176,12 @@ class GameStream:
             #     avg = (
             #         avg + self.get_region(p[0], p[1], depth_map))/2
 
+            depth_map = self.infer(img)
             val = int(self.get_region(
                 points[0][0], points[0][1], depth_map))
             self.queue.put(val)
 
             if self.preview:
-                depth_map = cv2.cvtColor(depth_map, cv2.COLOR_GRAY2RGB)
                 cv2.rectangle(depth_map, points[0][0],
                               points[0][1], color, thickness)
                 cv2.rectangle(img, points[0][0],
@@ -169,16 +192,21 @@ class GameStream:
 
                 end = time.time()
                 totalTime = end - start
-                fps = 1 / totalTime
+                current_fps = 1 / totalTime
 
-                cv2.putText(depth_map, f'FPS: {int(fps)}', (20, 70),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 2)
-                cv2.putText(depth_map, f'VAL: {int(val)}', (20, 140),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 2)
+                cv2.putText(depth_map, f'FPS: {int(current_fps)}', (5, 20),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
+                cv2.putText(depth_map, f'VAL: {str(val)}', (5, 40),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
+                depth_map = cv2.cvtColor(depth_map, cv2.COLOR_GRAY2RGB)
+                # depth_map = cv2.applyColorMap(depth_map, cv2.COLORMAP_MAGMA)
 
                 cv2.imshow("game_stream", img)
                 cv2.imshow("depth_map", depth_map)
-                writer.write(depth_map)
+                writer_depth.write(depth_map)
+                writer_image.write(img)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     pipe.kill()
                     break

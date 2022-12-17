@@ -7,8 +7,6 @@ import subprocess as sp
 import torch
 import os
 import numpy as np
-import PIL.Image as pil
-import matplotlib.pyplot as plt
 
 import torch
 from torchvision import transforms
@@ -17,7 +15,7 @@ from monodepth2 import networks
 from monodepth2.utils import download_model_if_doesnt_exist
 
 
-class GameStream:
+class GameStreamMono:
     def __init__(self, queue, preview):
         self.queue = queue
         self.thread = Thread(target=self.fetch_stream)
@@ -63,7 +61,7 @@ class GameStream:
 
         self.feed_height = loaded_dict_enc['height']
         self.feed_width = loaded_dict_enc['width']
-        print(encoder.eval(), depth_decoder.eval())
+        # print(encoder.eval(), depth_decoder.eval())
         self.encoder = encoder
         self.depth_decoder = depth_decoder
 
@@ -88,21 +86,30 @@ class GameStream:
     def fetch_stream(self):
         width = 640
         height = int(width * 9/16)
-
-        # command = "ffmpeg -y -video_size 1920x1080 -framerate 2 -f x11grab -i :0.0 -pix_fmt bgr24 -vf fps=2,scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % width
-        command = "ffmpeg -y -i output1.mkv -pix_fmt bgr24 -vf fps=2,scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % width
+        stream_fps = 2
+        command = "ffmpeg -y -video_size 1920x1080 -framerate %s -f x11grab -i :0.0 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % (
+            stream_fps, width)
+        # command = "ffmpeg -y -i video.mp4 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % width
         pipe = sp.Popen(command.split(" "), stdout=sp.PIPE,
                         stderr=sp.PIPE, bufsize=-1)
-
         if self.preview:
+            try:
+                os.remove('depth_map.mp4')
+                os.remove('video.mp4')
+            except:
+                pass
+
             cv2.namedWindow("depth_map")
             cv2.resizeWindow("depth_map", width, height)
 
             cv2.namedWindow("game_stream")
             cv2.resizeWindow("game_stream", width, height)
-            writer = cv2.VideoWriter('depth_map.mp4',
-                                     cv2.VideoWriter_fourcc(*'mp4v'),
-                                     15, (width, height))
+            writer_depth = cv2.VideoWriter('depth_map.mp4',
+                                           cv2.VideoWriter_fourcc(*'mp4v'),
+                                           max_fps, (width, height))
+            writer_image = cv2.VideoWriter('video.mp4',
+                                           cv2.VideoWriter_fourcc(*'mp4v'),
+                                           max_fps, (width, height))
 
         x = int((width * 0.5))
         y = int((height * 0.5))
@@ -177,16 +184,21 @@ class GameStream:
 
                 end = time.time()
                 totalTime = end - start
-                fps = 1 / totalTime
+                current_fps = 1 / totalTime
 
-                cv2.putText(depth_map, f'FPS: {int(fps)}', (20, 70),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 2)
-                cv2.putText(depth_map, f'VAL: {str(val)}', (20, 140),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 2)
+                cv2.putText(depth_map, f'FPS: {int(current_fps)}', (5, 20),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
-                cv2.imshow("game_stream", img)
-                cv2.imshow("depth_map", depth_map)
-                # writer.write(depth_map)
+                cv2.putText(depth_map, f'VAL: {str(val)}', (5, 40),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
+                depth_map = cv2.cvtColor(depth_map, cv2.COLOR_GRAY2RGB)
+                depth_map = cv2.applyColorMap(depth_map, cv2.COLORMAP_MAGMA)
+
+                # cv2.imshow("game_stream", img)
+                # cv2.imshow("depth_map", depth_map)
+                writer_depth.write(depth_map)
+                writer_image.write(img)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     pipe.kill()
                     break

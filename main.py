@@ -1,20 +1,29 @@
 from game_control import GameController
-from game_stream_midas import GameStream
+from game_stream_monodepth2 import GameStreamMono
+from game_stream_midas import GameStreamMidas
+
 from queue import Queue
 import sys
 
 
 args = sys.argv[1:]
-if len(args) > 0 and args[0] == 'p':
-    preview = True
-else:
-    preview = False
+GameStream = None
 
+if len(args) > 0:
+    if 'p' in args:
+        preview = True
+    else:
+        preview = False
 
-if len(args) > 1 and args[1] == 'c':
-    contrl = True
-else:
-    contrl = False
+    if 'c' in args:
+        contrl = True
+    else:
+        contrl = False
+
+    if 'mono' in args:
+        GameStream = GameStreamMono
+    else:
+        GameStream = GameStreamMidas
 
 
 q = Queue()
@@ -22,8 +31,9 @@ q = Queue()
 if contrl:
     controller = GameController(q).get_thread()
     controller.start()
-    controller.join()
 
 streamer = GameStream(q, preview).get_thread()
 streamer.start()
 streamer.join()
+if contrl:
+    controller.join()
