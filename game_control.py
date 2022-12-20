@@ -48,17 +48,20 @@ class GameController():
     def handle_release(self, key):
         pass
 
-    def forward(self):
+    def forward(self, value):
         global GAS
+        min_weight = 60
+        value = min_weight if value < min_weight else value
+        freq = int(value/60)
+
         while self.state == GAS:
             self.keyboard.press('W')
-            time.sleep(1)
+            time.sleep(freq)
             self.keyboard.release('W')
-            time.sleep(1)
+            time.sleep(freq)
         print("Forward loop ended")
 
     def stop(self):
-        global BREAK
         while self.state == BREAK:
             self.keyboard.press(Key.space)
             time.sleep(1)
@@ -76,13 +79,13 @@ class GameController():
             if dis < 80:
                 print('accelrating', dis)
                 self.state = GAS
-                # if not self.for_thread.is_alive() and self.should_play:
-                #     self.for_thread = Thread(target=self.forward)
-                #     self.for_thread.start()
+                if not self.for_thread.is_alive() and self.should_play:
+                    self.for_thread = Thread(target=self.forward)
+                    self.for_thread.start()
 
             else:
                 print('breaking', dis)
                 self.state = BREAK
-                # if not self.stop_thread.is_alive() and self.should_play:
-                #     self.stop_thread = Thread(target=self.stop)
-                #     self.stop_thread.start()
+                if not self.stop_thread.is_alive() and self.should_play:
+                    self.stop_thread = Thread(target=self.stop)
+                    self.stop_thread.start()
