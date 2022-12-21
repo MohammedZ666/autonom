@@ -31,12 +31,13 @@ class GameStreamMono:
     def get_region(self, start, end, img):
         # start is the top left point
         # end is the bottom right point
-        avg_list = np.empty((end[0]-start[0]+1))
+        # avg_list = np.empty((end[0]-start[0]+1))
 
-        for i in range(len(avg_list)):
-            avg_list[i] = np.mean(img[:, i])
-        return (int(avg_list.mean()))
-        # print(np.diff(avg_list))
+        # for i in range(len(avg_list)):
+        #     avg_list[i] = np.mean(img[:, i])
+        # return (avg_list)
+        img = img[start[1]: end[1], start[0]: end[0]]
+        return img
 
     def intialize_model(self):
         ROOT = ''
@@ -87,9 +88,9 @@ class GameStreamMono:
         width = 640
         height = int(width * 9/16)
         stream_fps = 2
-        command = "ffmpeg -y -video_size 1920x1080 -framerate %s -f x11grab -i :0.0 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % (
-            stream_fps, width)
-        # command = "ffmpeg -y -i video.mp4 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % width
+        # command = "ffmpeg -y -video_size 1920x1080 -framerate %s -f x11grab -i :0.0 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % (
+        #    stream_fps, width)
+        command = 'ffmpeg -y -i video0.mp4 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -' % width
         pipe = sp.Popen(command.split(" "), stdout=sp.PIPE,
                         stderr=sp.PIPE, bufsize=-1)
         if self.preview:
@@ -106,23 +107,23 @@ class GameStreamMono:
             cv2.resizeWindow("game_stream", width, height)
             writer_depth = cv2.VideoWriter('depth_map.mp4',
                                            cv2.VideoWriter_fourcc(*'mp4v'),
-                                           max_fps, (width, height))
+                                           stream_fps, (width, height))
             writer_image = cv2.VideoWriter('video.mp4',
                                            cv2.VideoWriter_fourcc(*'mp4v'),
-                                           max_fps, (width, height))
-
-        x = int((width * 0.5))
-        y = int((height * 0.5))
-        h_factor = 1/128
-        w_factor = 1/128
-        h_off = int(height * 1/12) * -1
+                                           stream_fps, (width, height))
 
         # x = int((width * 0.5))
         # y = int((height * 0.5))
+        # h_factor = 1/128
+        # w_factor = 1/128
+        # h_off = int(height * 1/12) * -1
+
+        x = int((width * 0.5))
+        y = int((height * 0.5))
         gap = int(width * 1/16)
-        # h_factor = 1/64
-        # w_factor = 1/64
-        # h_off = int(height * 1/16)* -1
+        h_factor = 1/32
+        w_factor = 1/32
+        h_off = int(height * 1/16) * -1
         x0, y0 = (int(x - width * w_factor),
                   int(y - height * h_factor) - h_off)
         x1, y1 = (int(x + width * w_factor),
@@ -169,9 +170,11 @@ class GameStreamMono:
             depth_map = self.infer(img, width, height)
             depth_map = cv2.normalize(
                 depth_map, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-            val = self.get_region(
+
+            region = self.get_region(
                 points[0][0], points[0][1], depth_map)
-            self.queue.put(0)
+            val = region.mean()
+            self.queue.put(val)
 
             if self.preview:
                 cv2.rectangle(depth_map, points[0][0],
@@ -179,29 +182,37 @@ class GameStreamMono:
                 cv2.rectangle(img, points[0][0],
                               points[0][1],  color, thickness)
 
-                cv2.circle(img, (x, y), 0, color, thickness)
-                cv2.circle(depth_map, (x, y), 0, color, thickness)
+                # cv2.circle(img, (x, y), 0, color, thickness)
+                # cv2.circle(depth_map, (x, y), 0, color, thickness)
 
                 end = time.time()
                 totalTime = end - start
                 current_fps = 1 / totalTime
+                # val = "STOP" if val > 90 else "GO"
 
                 cv2.putText(depth_map, f'FPS: {int(current_fps)}', (5, 20),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
-
                 cv2.putText(depth_map, f'VAL: {str(val)}', (5, 40),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
-                depth_map = cv2.cvtColor(depth_map, cv2.COLOR_GRAY2RGB)
-                depth_map = cv2.applyColorMap(depth_map, cv2.COLORMAP_MAGMA)
+                cv2.putText(img, f'FPS: {int(current_fps)}', (5, 20),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+                cv2.putText(img, f'VAL: {str(val)}', (5, 40),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
-                # cv2.imshow("game_stream", img)
-                # cv2.imshow("depth_map", depth_map)
-                writer_depth.write(depth_map)
-                writer_image.write(img)
+                # depth_map = cv2.cvtColor(depth_map, cv2.COLOR_GRAY2RGB)
+                # depth_map = cv2.applyColorMap(depth_map, cv2.COLORMAP_MAGMA)
+
+                cv2.imshow("game_stream", img)
+                cv2.imshow("depth_map", depth_map)
+                cv2.imshow("region", region)
+
+                # writer_depth.write(depth_map)
+                # writer_image.write(img)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     pipe.kill()
                     break
+                time.sleep(0.3)
 
             pipe.stdout.flush()
 

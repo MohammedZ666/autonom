@@ -85,9 +85,9 @@ class GameStreamMidas:
         width = 640
         height = int(width * 9/16)
         stream_fps = 2
-        # command = "ffmpeg -y -video_size 1920x1080 -framerate %s -f x11grab -i :0.0 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % (
-        #     stream_fps, width)
-        command = 'ffmpeg -y -i video0.mp4 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -' % width
+        command = "ffmpeg -y -video_size 1920x1080 -framerate %s -f x11grab -i :0.0 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % (
+            stream_fps, width)
+        # command = 'ffmpeg -y -i video0.mp4 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -' % width
         pipe = sp.Popen(command.split(" "), stdout=sp.PIPE,
                         stderr=sp.PIPE, bufsize=-1)
         self.initialize(2)
@@ -210,7 +210,7 @@ class GameStreamMidas:
 
                 cv2.imshow("game_stream", img)
                 cv2.imshow("depth_map", depth_map)
-                # cv2.imshow("region", region)
+                cv2.imshow("region", region)
                 # writer_depth.write(depth_map)
                 # writer_image.write(img)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -219,7 +219,7 @@ class GameStreamMidas:
                     break
 
             pipe.stdout.flush()
-            time.sleep(0.3)
+            # time.sleep(0.3)
 
         if self.preview:
             cv2.destroyAllWindows()
