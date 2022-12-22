@@ -48,35 +48,30 @@ class GameController():
 
     def forward(self):
         global GAS
-        dis = self.queue.get()
-        min_weight = 60
-        dis = min_weight if dis < min_weight else dis
-        freq = int(dis/min_weight)
-        count = 0
-        limit = 2
         while self.state == GAS:
-            # print('accelrating', dis)
-            if count == limit:
-                self.keyboard.press(Key.space)
-                time.sleep(10)
-                self.keyboard.release(Key.space)
-                time.sleep(10)
+            dis = self.queue.get()
+            self.queue.clear()
 
-            self.keyboard.press('W')
-            time.sleep(0.1)
-            self.keyboard.release('W')
-            time.sleep(0.1)
-            count = (count + 1) % limit
+            if dis < 30:
+                self.keyboard.press('W')
+                time.sleep(0.5)
+                self.keyboard.release('W')
+
+            else:
+                self.keyboard.press('W')
+                time.sleep(0.25)
+                self.keyboard.release('W')
         # print("Forward loop ended")
 
     def stop(self):
-        dis = self.queue.get()
-        # print('breaking', dis)
         while self.state == BREAK:
+            dis = self.queue.get()
+            self.queue.clear()
+
+            # print('breaking', dis)
             self.keyboard.press(Key.space)
-            time.sleep(1)
+            time.sleep(0.01)
             self.keyboard.release(Key.space)
-            time.sleep(1)
         # print("Stop loop ended")
 
     def play(self):
@@ -85,19 +80,24 @@ class GameController():
 
         while self.should_play:
             dis = self.queue.get()
+            self.queue.clear()
 
-            if dis < 80:
+            if dis <= 30:
                 self.state = GAS
                 if not self.for_thread.is_alive() and self.should_play:
                     self.for_thread = Thread(
                         target=self.forward)
                     self.for_thread.start()
+                if self.stop_thread.is_alive():
+                    self.stop_thread.join()
 
             else:
                 self.state = BREAK
                 if not self.stop_thread.is_alive() and self.should_play:
                     self.stop_thread = Thread(target=self.stop)
                     self.stop_thread.start()
+                if self.for_thread.is_alive():
+                    self.for_thread.join()
 
         if self.for_thread.is_alive():
             self.for_thread.join()

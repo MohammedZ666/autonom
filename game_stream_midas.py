@@ -6,19 +6,41 @@ import time
 import subprocess as sp
 import torch
 import os
+import tkinter as tk
 
 
 class GameStreamMidas:
-    def __init__(self, queue, preview):
+    def __init__(self, queue, preview, test, label):
         self.queue = queue
         self.thread = Thread(target=self.fetch_stream)
         self.preview = preview
+        self.test = test
+        self.label = label
         self.transform = None
         self.device = None
         self.midas = None
 
     def get_thread(self):
         return self.thread
+
+    def bounding_box(self, img_gray):
+        low, high = 191, 255
+        ret, thresh = cv2.threshold(img_gray, low, high, cv2.THRESH_BINARY)
+        kernel = np.array(cv2.getStructuringElement(
+            cv2.MORPH_RECT, (3, 3), (-1, -1)))
+        img_open = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+        # cv2.imshow('abc', img_open)
+        ret1, thresh1 = cv2.threshold(
+            img_open, low, high, cv2.THRESH_BINARY_INV)
+        contours, hierarchy = cv2.findContours(
+            thresh1, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+
+        for i in range(len(contours)):
+            if len(contours[i]) > 20:
+                x, y, w, h = cv2.boundingRect(contours[i])
+                cv2.rectangle(img_gray, (x, y), (x+w, y+h), (255, 255, 255), 2)
+                print((x, y), (x+w, y+h))
+        cv2.imshow('contours', img_gray)
 
     def get_region(self, start, end, img):
         # start is the top left point
@@ -85,11 +107,16 @@ class GameStreamMidas:
         width = 640
         height = int(width * 9/16)
         stream_fps = 2
-        command = "ffmpeg -y -video_size 1920x1080 -framerate %s -f x11grab -i :0.0 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % (
-            stream_fps, width)
-        # command = 'ffmpeg -y -i video0.mp4 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -' % width
+
+        if self.test:
+            command = 'ffmpeg -y -i video0.mp4 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -' % width
+        else:
+            command = "ffmpeg -y -video_size 1920x1080 -framerate %s -f x11grab -i :0.0 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % (
+                stream_fps, width)
+
         pipe = sp.Popen(command.split(" "), stdout=sp.PIPE,
                         stderr=sp.PIPE, bufsize=-1)
+
         self.initialize(2)
         if self.preview:
             try:
@@ -119,9 +146,16 @@ class GameStreamMidas:
         x = int((width * 0.5))
         y = int((height * 0.5))
         gap = int(width * 1/16)
-        h_factor = 1/32
-        w_factor = 1/32
-        h_off = int(height * 1/16) * -1
+        h_factor = 1/16
+        w_factor = 1/16
+        h_off = int(height * 1/16) * 0
+
+        # x = int((width * 0.5))
+        # y = int((height * 0.5))
+        # gap = int(width * 1/16)
+        # h_factor = 1/16
+        # w_factor = 1/16
+        # h_off = int(height * 1/32) * -1
         x0, y0 = (int(x - width * w_factor),
                   int(y - height * h_factor) - h_off)
         x1, y1 = (int(x + width * w_factor),
@@ -159,6 +193,9 @@ class GameStreamMidas:
         )
         color = (0,  0, 0)
         thickness = 5
+        all_white = (x0-x1) * (y0-y1) * 255
+        limit = 30
+
         while True:
             start = time.time()
 
@@ -166,7 +203,8 @@ class GameStreamMidas:
                 buffer=pipe.stdout.read(width*height*3), dtype='uint8')
             img = img.reshape((height, width, 3))
             depth_map = self.infer(img)
-
+            depth_map = cv2.normalize(
+                depth_map, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
             # val = 0
             # for p in points:
             #     # cv2.rectangle(depth_map, p[0], p[1], color, thickness)
@@ -174,10 +212,24 @@ class GameStreamMidas:
             #     val = (
             #         val + self.get_region(p[0], p[1], depth_map))/2
 
+            _, depth_map = cv2.threshold(
+                depth_map, 40, 255, cv2.THRESH_BINARY)
+
             region = self.get_region(
                 points[0][0], points[0][1], depth_map)
-            val = region.flatten().mean()
+
+            val = (region.flatten().sum())*100/all_white
+            h_region = region[0:int((x0-x1)/2), 0:y0-y1]
+
+            if val < limit and h_region.sum() > 0:
+                val = limit
+            # self.bounding_box(region)
+
             self.queue.put(val)
+
+            val = "STOP: " + str(val) if val > limit else "GO: " + str(val)
+            self.label['text'] = str(val)
+            self.label.pack()
 
             if self.preview:
                 cv2.rectangle(depth_map, points[0][0],
@@ -195,7 +247,6 @@ class GameStreamMidas:
                 cv2.putText(img, f'FPS: {int(current_fps)}', (5, 20),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
-                val = "STOP" if val > 90 else "GO"
                 cv2.putText(img, f'VAL: {str(val)}', (5, 40),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
@@ -209,8 +260,9 @@ class GameStreamMidas:
                 # depth_map = cv2.applyColorMap(depth_map, cv2.COLORMAP_MAGMA)
 
                 cv2.imshow("game_stream", img)
-                cv2.imshow("depth_map", depth_map)
+                # cv2.imshow("depth_map", depth_map)
                 cv2.imshow("region", region)
+                # cv2.imshow("h_region", h_region)
                 # writer_depth.write(depth_map)
                 # writer_image.write(img)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -219,7 +271,8 @@ class GameStreamMidas:
                     break
 
             pipe.stdout.flush()
-            # time.sleep(0.3)
 
+            if self.test:
+                time.sleep(0.3)
         if self.preview:
             cv2.destroyAllWindows()

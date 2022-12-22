@@ -1,13 +1,14 @@
 from game_control import GameController
 from game_stream_monodepth2 import GameStreamMono
 from game_stream_midas import GameStreamMidas
-
-from queue import Queue
+from utils import Queue
 import sys
-
+import tkinter as tk
+from tkinter import *
 
 args = sys.argv[1:]
 GameStream = None
+test = False
 
 if len(args) > 0:
     if 'p' in args:
@@ -25,15 +26,32 @@ if len(args) > 0:
     else:
         GameStream = GameStreamMidas
 
+    if 't' in args:
+        test = True
 
 q = Queue()
+
+win = tk.Tk()
+label = Label(win, text="Initializing model...", font=('Consolas', '14'),
+              fg='green3',
+              bg='grey19')
+label.pack()
+
+# Define Window Geometry
+win.overrideredirect(True)
+win.geometry("+5+5")
+win.lift()
+win.wm_attributes("-topmost", True)
+
 
 if contrl:
     controller = GameController(q).get_thread()
     controller.start()
 
-streamer = GameStream(q, preview).get_thread()
+streamer = GameStream(q, preview, test, label).get_thread()
 streamer.start()
+win.mainloop()
+
 streamer.join()
 if contrl:
     controller.join()
