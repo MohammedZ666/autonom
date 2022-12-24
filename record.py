@@ -22,7 +22,7 @@ class GameController():
         if key == Key.end:
             self.should_play = not self.should_play
             if self.should_play:
-                command = "ffmpeg -y -video_size 1920x1080 -framerate 60 -f x11grab -i :0.0 -c:v libx264rgb -vf fps=2 -crf 0 -preset ultrafast -color_range 2 output2.mkv"
+                command = "ffmpeg -y -video_size 1920x1080 -framerate 60 -f x11grab -i :0.0 -c:v libx264rgb -vf fps=2 -crf 0 -preset ultrafast -color_range 2 output4.mkv"
                 self.pipe = sp.Popen(command.split(" "), stdout=sp.PIPE,
                                      stderr=sp.PIPE, bufsize=-1)
                 self.play_thread.start()

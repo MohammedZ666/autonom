@@ -16,12 +16,13 @@ from monodepth2.utils import download_model_if_doesnt_exist
 
 
 class GameStreamMono:
-    def __init__(self, queue, preview, test, label):
+    def __init__(self, queue, preview, test, label, limit):
         self.queue = queue
         self.thread = Thread(target=self.fetch_stream)
         self.preview = preview
         self.test = test
         self.label = label
+        self.limit = limit
         self.feed_height = None
         self.feed_width = None
         self.encoder = None

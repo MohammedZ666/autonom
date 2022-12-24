@@ -10,7 +10,7 @@ ENGINE_OFF = 2
 
 
 class GameController():
-    def __init__(self, queue) -> None:
+    def __init__(self, queue, label, limit) -> None:
         self.listener = Listener(
             on_press=self.handle_press,
             on_release=self.handle_release)
@@ -21,6 +21,8 @@ class GameController():
         self.for_thread = Thread(target=self.forward)
         self.stop_thread = Thread(target=self.stop)
         self.state = GAS
+        self.label = label
+        self.limit = limit
         self.pipe = None
 
     def get_thread(self):
@@ -37,6 +39,8 @@ class GameController():
             else:
                 # self.pipe.kill()
                 self.state = ENGINE_OFF
+                self.keyboard.release(Key.space)
+                self.keyboard.release('W')
                 self.play_thread.join()
                 self.play_thread = Thread(target=self.play)
                 self.for_thread = Thread(target=self.forward)
@@ -49,55 +53,60 @@ class GameController():
     def forward(self):
         global GAS
         while self.state == GAS:
-            dis = self.queue.get()
+            val = self.queue.get()
             self.queue.clear()
-
-            if dis < 30:
-                self.keyboard.press('W')
-                time.sleep(0.5)
-                self.keyboard.release('W')
-
-            else:
-                self.keyboard.press('W')
-                time.sleep(0.25)
-                self.keyboard.release('W')
-        # print("Forward loop ended")
+            self.keyboard.press('W')
+            time.sleep(0.5)
+            self.keyboard.release('W')
 
     def stop(self):
+        global BREAK
         while self.state == BREAK:
-            dis = self.queue.get()
+            val = self.queue.get()
             self.queue.clear()
-
-            # print('breaking', dis)
             self.keyboard.press(Key.space)
-            time.sleep(0.01)
+            time.sleep(0.5)
             self.keyboard.release(Key.space)
-        # print("Stop loop ended")
 
     def play(self):
         if self.should_play:
             print('playing started')
 
         while self.should_play:
-            dis = self.queue.get()
-            self.queue.clear()
-
-            if dis <= 30:
+            val = self.queue.get()
+            text = "STOP: " + \
+                str(val) if val > self.limit else "GO: " + str(val)
+            spc = int(time.time()) % 2 == 1
+            self.label['text'] = str(text) + " " + str(spc)
+            self.label.pack()
+            if val <= self.limit and spc:
                 self.state = GAS
-                if not self.for_thread.is_alive() and self.should_play:
-                    self.for_thread = Thread(
-                        target=self.forward)
-                    self.for_thread.start()
-                if self.stop_thread.is_alive():
-                    self.stop_thread.join()
-
-            else:
+                # if not self.for_thread.is_alive() and self.should_play:
+                #     self.for_thread = Thread(
+                #         target=self.forward)
+                #     self.for_thread.start()
+                # if self.stop_thread.is_alive():
+                #     self.stop_thread.join()
+                self.keyboard.release(Key.space)
+                self.keyboard.press('W')
+            elif not spc:
+                self.keyboard.release('W')
+                # self.keyboard.release(Key.space)
+            elif val > self.limit or spc:
                 self.state = BREAK
-                if not self.stop_thread.is_alive() and self.should_play:
-                    self.stop_thread = Thread(target=self.stop)
-                    self.stop_thread.start()
-                if self.for_thread.is_alive():
-                    self.for_thread.join()
+                # if not self.stop_thread.is_alive() and self.should_play:
+                #     self.stop_thread = Thread(target=self.stop)
+                #     self.stop_thread.start()
+                # if self.for_thread.is_alive():
+                #     self.for_thread.join()
+                self.keyboard.release('W')
+                self.keyboard.press(Key.space)
+                self.keyboard.release(Key.space)
+                self.keyboard.press(Key.space)
+                self.keyboard.release(Key.space)
+                self.keyboard.press(Key.space)
+
+            self.queue.clear()
 
         if self.for_thread.is_alive():
             self.for_thread.join()

@@ -6,16 +6,16 @@ import time
 import subprocess as sp
 import torch
 import os
-import tkinter as tk
+from pytesseract import image_to_string
 
 
 class GameStreamMidas:
-    def __init__(self, queue, preview, test, label):
+    def __init__(self, queue, preview, test, limit):
         self.queue = queue
         self.thread = Thread(target=self.fetch_stream)
         self.preview = preview
         self.test = test
-        self.label = label
+        self.limit = limit
         self.transform = None
         self.device = None
         self.midas = None
@@ -109,7 +109,7 @@ class GameStreamMidas:
         stream_fps = 2
 
         if self.test:
-            command = 'ffmpeg -y -i video0.mp4 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -' % width
+            command = 'ffmpeg -y -i output2.mp4 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -' % width
         else:
             command = "ffmpeg -y -video_size 1920x1080 -framerate %s -f x11grab -i :0.0 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % (
                 stream_fps, width)
@@ -143,19 +143,27 @@ class GameStreamMidas:
         # w_factor = 1/128
         # h_off = int(height * 1/12) * -1
 
-        x = int((width * 0.5))
-        y = int((height * 0.5))
-        gap = int(width * 1/16)
-        h_factor = 1/16
-        w_factor = 1/16
-        h_off = int(height * 1/16) * 0
-
         # x = int((width * 0.5))
         # y = int((height * 0.5))
         # gap = int(width * 1/16)
         # h_factor = 1/16
         # w_factor = 1/16
-        # h_off = int(height * 1/32) * -1
+        # h_off = int(height * 1/16) * 0
+
+        x = int((width * 0.5))
+        y = int((height * 0.5))
+        gap = int(width * 1/16)
+        h_factor = 1/16
+        w_factor = 1/16
+        h_off = int(height * 1/75) * -1
+
+        # x = int((width * 0.5))
+        # y = int((height * 0.5))
+        # gap = int(width * 1/16)
+        # h_factor = 1/64
+        # w_factor = 1/32
+
+        # h_off = int(height * 1/12) * -1
         x0, y0 = (int(x - width * w_factor),
                   int(y - height * h_factor) - h_off)
         x1, y1 = (int(x + width * w_factor),
@@ -176,7 +184,9 @@ class GameStreamMidas:
         points = np.array(
 
             [
+                # cv2.imshow("depth_map", depth_map)
                 [[x0, y0], [x1, y1]],
+
                 [[x2, y2], [x3, y3]],
                 [[x4, y4], [x5, y5]],
 
@@ -194,8 +204,9 @@ class GameStreamMidas:
         color = (0,  0, 0)
         thickness = 5
         all_white = (x0-x1) * (y0-y1) * 255
-        limit = 30
-
+        # xs0, ys0 = (width - int(width*1/8),
+        #             y - 3 * int(height * 1/32))
+        # xs1, ys1 = (width - int(width * 1/20), y - int(height * 1/24))
         while True:
             start = time.time()
 
@@ -221,21 +232,42 @@ class GameStreamMidas:
             val = (region.flatten().sum())*100/all_white
             h_region = region[0:int((x0-x1)/2), 0:y0-y1]
 
-            if val < limit and h_region.sum() > 0:
-                val = limit
-            # self.bounding_box(region)
+            if val < self.limit and h_region.sum() > 0:
+                val = self.limit
 
             self.queue.put(val)
 
-            val = "STOP: " + str(val) if val > limit else "GO: " + str(val)
-            self.label['text'] = str(val)
-            self.label.pack()
+            # speed_region = img[ys0:ys1,  xs0:xs1]
+            # speed_region = cv2.cvtColor(speed_region, cv2.COLOR_BGR2HSV)
+            # lower_region = np.array([98, 96, 112], np.uint8)
+            # upper_region = np.array([179, 168, 255], np.uint8)
+            # digits = cv2.inRange(speed_region, lower_region, upper_region)
+            # kernel = np.ones((1, 1), "uint8")
+            # red = cv2.morphologyEx(digits, cv2.MORPH_OPEN, kernel)
+            # red = cv2.dilate(red, kernel, iterations=1)
+            # speed_region = 255 - \
+            #     cv2.bitwise_and(speed_region, speed_region, mask=red)
+            # speed_region[speed_region < 255] = 0
+            # speed = image_to_string(
+            #     speed_region, lang='eng',
+            #     config='-c tessedit_char_whitelist=0123456789 --psm 7')
+            # print(speed.replace('?', ''))
+
+            val = "STOP: %s" % (
+                int(val)) if val > self.limit else "GO: %s" % (
+                int(val))
 
             if self.preview:
+                # cv2.imshow("speed", speed_region)
+                cv2.imshow("region", region)
+                # cv2.imshow("h_region", h_region)
+
                 cv2.rectangle(depth_map, points[0][0],
-                              points[0][1], color, thickness)
+                              points[0][1], color, 1)
                 cv2.rectangle(img, points[0][0],
-                              points[0][1],  color, thickness)
+                              points[0][1],  color, 1)
+                # cv2.rectangle(img, (xs0, ys0),
+                #               (xs1, ys1),  color, thickness)
 
                 # cv2.circle(img, (x, y), 0, color, thickness)
                 # cv2.circle(depth_map, (x, y), 0, color, thickness)
@@ -245,10 +277,10 @@ class GameStreamMidas:
                 current_fps = 1 / totalTime
 
                 cv2.putText(img, f'FPS: {int(current_fps)}', (5, 20),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
                 cv2.putText(img, f'VAL: {str(val)}', (5, 40),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
                 cv2.putText(depth_map, f'FPS: {int(current_fps)}', (5, 20),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
@@ -261,8 +293,6 @@ class GameStreamMidas:
 
                 cv2.imshow("game_stream", img)
                 # cv2.imshow("depth_map", depth_map)
-                cv2.imshow("region", region)
-                # cv2.imshow("h_region", h_region)
                 # writer_depth.write(depth_map)
                 # writer_image.write(img)
                 if cv2.waitKey(1) & 0xFF == ord('q'):

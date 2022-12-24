@@ -31,26 +31,27 @@ if len(args) > 0:
 
 q = Queue()
 
-win = tk.Tk()
-label = Label(win, text="Initializing model...", font=('Consolas', '14'),
-              fg='green3',
-              bg='grey19')
-label.pack()
+if contrl:
+    win = tk.Tk()
+    label = Label(win, text="PRESS 'END' to activate SAD...", font=('Consolas', '14'),
+                  fg='green3',
+                  bg='grey19')
+    label.pack()
+    # Define Window Geometry
+    win.overrideredirect(True)
+    win.geometry("+5+5")
+    win.lift()
+    win.wm_attributes("-topmost", True)
 
-# Define Window Geometry
-win.overrideredirect(True)
-win.geometry("+5+5")
-win.lift()
-win.wm_attributes("-topmost", True)
+limit = 30
 
+streamer = GameStream(q, preview, test, limit).get_thread()
+streamer.start()
 
 if contrl:
-    controller = GameController(q).get_thread()
+    controller = GameController(q, label, limit).get_thread()
     controller.start()
-
-streamer = GameStream(q, preview, test, label).get_thread()
-streamer.start()
-win.mainloop()
+    win.mainloop()
 
 streamer.join()
 if contrl:
