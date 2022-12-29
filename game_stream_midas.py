@@ -7,6 +7,8 @@ import subprocess as sp
 import torch
 import os
 from pytesseract import image_to_string
+from tkinter import Canvas
+import tkinter as tk
 
 
 class GameStreamMidas:
@@ -104,12 +106,13 @@ class GameStreamMidas:
         return depth_map
 
     def fetch_stream(self):
+
         width = 640
         height = int(width * 9/16)
         stream_fps = 2
 
         if self.test:
-            command = 'ffmpeg -y -i output2.mp4 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -' % width
+            command = 'ffmpeg -y -i video0.mp4 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -' % width
         else:
             command = "ffmpeg -y -video_size 1920x1080 -framerate %s -f x11grab -i :0.0 -pix_fmt bgr24 -vf scale=%s:-2 -vcodec rawvideo -an -sn -f image2pipe -" % (
                 stream_fps, width)
@@ -143,27 +146,27 @@ class GameStreamMidas:
         # w_factor = 1/128
         # h_off = int(height * 1/12) * -1
 
-        # x = int((width * 0.5))
-        # y = int((height * 0.5))
-        # gap = int(width * 1/16)
-        # h_factor = 1/16
-        # w_factor = 1/16
-        # h_off = int(height * 1/16) * 0
-
         x = int((width * 0.5))
         y = int((height * 0.5))
         gap = int(width * 1/16)
-        h_factor = 1/16
-        w_factor = 1/16
-        h_off = int(height * 1/75) * -1
+        h_factor = 1/32
+        w_factor = 1/32
+        h_off = int(height * 1/24) * -1
+
+        # x = int((width * 0.5))
+        # y = int((height * 0.5))
+        # gap = int(width * 1/16)
+        # h_factor = 1/24
+        # w_factor = 1/16
+        # h_off = int(height * 1/32) * -1
 
         # x = int((width * 0.5))
         # y = int((height * 0.5))
         # gap = int(width * 1/16)
         # h_factor = 1/64
         # w_factor = 1/32
-
         # h_off = int(height * 1/12) * -1
+
         x0, y0 = (int(x - width * w_factor),
                   int(y - height * h_factor) - h_off)
         x1, y1 = (int(x + width * w_factor),

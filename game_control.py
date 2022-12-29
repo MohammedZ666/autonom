@@ -76,8 +76,11 @@ class GameController():
             val = self.queue.get()
             text = "STOP: " + \
                 str(val) if val > self.limit else "GO: " + str(val)
-            spc = int(time.time()) % 2 == 1
-            self.label['text'] = str(text) + " " + str(spc)
+            levels = 10
+            throttle = max(round(val/levels), round(self.limit/levels))
+            spc = int(time.time()) % throttle == 0
+            self.label['text'] = str(
+                text) + " " + str(spc) + " " + str(int(throttle))
             self.label.pack()
             if val <= self.limit and spc:
                 self.state = GAS
@@ -100,10 +103,9 @@ class GameController():
                 # if self.for_thread.is_alive():
                 #     self.for_thread.join()
                 self.keyboard.release('W')
-                self.keyboard.press(Key.space)
-                self.keyboard.release(Key.space)
-                self.keyboard.press(Key.space)
-                self.keyboard.release(Key.space)
+                for i in range(2):
+                    self.keyboard.press(Key.space)
+                    self.keyboard.release(Key.space)
                 self.keyboard.press(Key.space)
 
             self.queue.clear()

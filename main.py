@@ -9,6 +9,7 @@ from tkinter import *
 args = sys.argv[1:]
 GameStream = None
 test = False
+limit = 40
 
 if len(args) > 0:
     if 'p' in args:
@@ -43,7 +44,6 @@ if contrl:
     win.lift()
     win.wm_attributes("-topmost", True)
 
-limit = 30
 
 streamer = GameStream(q, preview, test, limit).get_thread()
 streamer.start()
